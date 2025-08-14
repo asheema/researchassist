@@ -1,0 +1,204 @@
+Project Overview
+
+This project is a research brief generator that uses AI (Google Gemini API) and LangGraph to produce structured research briefs for any topic. The system supports:
+
+Contextual research brief generation based on user history.
+
+Multi-step planning using research nodes.
+
+Optional live search for sources using DuckDuckGo.
+
+Per-source summarization.
+
+Final synthesis of a research brief.
+
+Token and latency tracking for each execution.
+
+FastAPI API for programmatic access and CLI interface for local use.
+
+  2. Folder Structure
+researchassist/
+│
+├── assign1.py                  # Main FastAPI & CLI entry point
+├── requirements.txt        # Python dependencies
+├── user_history/           # Stores user history JSON files
+├── .env                    # Environment variables (API keys, project config)
+└── README.md 
+
+3. Environment Setup
+3.1. Python Version
+
+Use Python >= 3.8
+
+Recommended: Python 3.11
+
+3.2. Install Dependencies
+
+Add the following to requirements.txt:
+
+fastapi
+uvicorn
+pydantic
+langchain
+langchain_community
+langgraph
+google-generativeai
+python-dotenv
+duckduckgo-search
+Then run:
+
+pip install -r requirements.txt
+
+3.3. Environment Variables (.env)
+
+Create a .env file in the project root with:
+
+GOOGLE_API_KEY="your_google_gemini_api_key"
+
+4. Project Components
+4.1. Graph Nodes
+
+Context Summarization: Summarizes previous briefs for context if it’s a follow-up.
+
+Planning Node: Generates structured research steps.
+
+Search Node (optional): Searches DuckDuckGo for sources.
+
+Content Fetch Node: Fetches content for each source (simulated in current version).
+
+Per-Source Summarization Node: Summarizes individual sources.
+
+Synthesis Node: Generates the final research brief.
+
+Post-Processing Node: Combines results into the final structured output.
+
+4.2. Data Schemas
+
+ResearchPlanStep → Stores a single research step.
+
+SourceSummary → Stores per-source summary.
+
+FinalBrief → Complete research brief (includes optional trace_url).
+
+GraphState → Holds intermediate data between nodes.
+
+5. API Usage (FastAPI)
+5.1. Run Server
+uvicorn app:app --reload
+
+5.2. Endpoint: Generate Brief
+
+POST /brief
+
+Request JSON:
+
+{
+  "topic": "Machine Learning for Quantum Error Correction",
+  "depth": 3,
+  "follow_up": false,
+  "user_id": "user123"
+}
+
+
+Response JSON:
+
+{
+  "topic": "Machine Learning for Quantum Error Correction",
+  "depth": 3,
+  "steps": [...],
+  "sources": [...],
+  "synthesis": "Final research brief text",
+  "references": ["url1", "url2"],
+  "context_summary": null,
+  "trace_url": null,
+  "latency_seconds": 12.5,
+  "token_estimate": 320
+}
+
+
+Notes:
+
+trace_url is optional if LangSmith tracing is not configured.
+
+latency_seconds → Time to execute the entire graph.
+
+token_estimate → Approximate tokens consumed by Gemini responses.
+
+6. CLI Usage
+python app.py cli --topic "Quantum Error Correction" --depth 3 --follow-up --user-id "user123"
+
+
+Prints the structured research brief in JSON format.
+
+Includes latency_seconds and token_estimate.
+
+7. Persistent User History
+
+Stored in user_history/<user_id>.json.
+
+Allows follow-up briefs to use previous context.
+
+8. Optional DuckDuckGo Search
+
+Requires duckduckgo-search package.
+
+If installed, search_node can fetch live sources.
+
+If not needed, the search_node can be skipped to avoid dependency issues on Render.
+
+9. Gemini AI Integration
+
+Uses google-generativeai with the model "gemini-1.5-flash".
+
+Responses are used in planning, summarization, and synthesis nodes.
+
+Each node’s output is parsed into the defined Pydantic schema.
+
+10. Execution Metrics
+
+Latency: Computed as time.time() - start_time.
+
+Token Estimate: Approximation based on len(str(output)) // 4.
+
+Both are included in FastAPI and CLI responses.
+
+11. Formatting Improvements
+
+To remove \n and ** in API responses:
+
+brief.synthesis = brief.synthesis.replace("\n", "\n").replace("**", "")
+
+
+Place this after synthesis generation in post_processing_node or before returning the response.
+
+12. Deployment Notes
+
+Set .env variables in Render or any cloud deployment environment.
+
+Ensure requirements.txt includes all dependencies.
+
+If DuckDuckGo search is not needed, comment out search_node to avoid import errors.
+
+Test locally with CLI first before deploying.
+
+Summary
+
+FastAPI provides programmatic access.
+
+CLI allows local generation.
+
+LangGraph manages execution nodes.
+
+Gemini AI generates content.
+
+Metrics (latency_seconds, token_estimate) included.
+
+Persistent history allows follow-up context.
+
+CLI USAGE INSTRUCTIONS
+
+First run the file.
+then uvicorn filename:app --reload this will start fastapi and load browser. Go to the given link genearted with /docs added at end of url . then ur endpont will come up. then test by giving example usage as given above
+
+
+Perfect! Here's a clear diagram of your LangGraph node flow with execution metrics included.
