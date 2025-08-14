@@ -1,4 +1,4 @@
-Project Overview
+** Project Overview
 
 This project is a research brief generator that uses AI (Google Gemini API) and LangGraph to produce structured research briefs for any topic. The system supports:
 
