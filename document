@@ -82,7 +82,33 @@ FinalBrief → Complete research brief (includes optional trace_url).
 
 GraphState → Holds intermediate data between nodes.
 
-5. API Usage (FastAPI)
+LangGraph organizes tasks as nodes, each performing a specific step in your research brief generation.
+
+Context Summarization Node → Reads previous briefs to provide context if this is a follow-up.
+
+Planning Node → Generates structured research steps.
+
+Search Node (optional) → Fetches live sources via DuckDuckGo.
+
+Content Fetch Node → Retrieves content for each source.
+
+Per-Source Summarization Node → Summarizes each source individually.
+
+Synthesis Node → Combines all summaries into a final brief.
+
+Post-Processing Node → Cleans formatting and prepares output for API/CLI.
+
+The project uses Pydantic schemas to structure the data:
+
+ResearchPlanStep → One research step
+
+SourceSummary → Individual source summary
+
+FinalBrief → Complete research brief with optional trace_url
+
+GraphState → Holds intermediate data between nodes
+
+# 5. API Usage (FastAPI)
 5.1. Run Server
 uvicorn app:app --reload
 
@@ -179,9 +205,12 @@ Ensure requirements.txt includes all dependencies.
 
 If DuckDuckGo search is not needed, comment out search_node to avoid import errors.
 
+Render Start Command: uvicorn app:app --host 0.0.0.0 --port $PORT
+
+
 Test locally with CLI first before deploying.
 
-Summary
+# Summary
 
 FastAPI provides programmatic access.
 
@@ -195,7 +224,7 @@ Metrics (latency_seconds, token_estimate) included.
 
 Persistent history allows follow-up context.
 
-CLI USAGE INSTRUCTIONS
+# CLI USAGE INSTRUCTIONS
 
 First run the file.
 then uvicorn filename:app --reload this will start fastapi and load browser. Go to the given link genearted with /docs added at end of url . then ur endpont will come up. then test by giving example usage as given above
