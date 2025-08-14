@@ -8,3 +8,5 @@ langgraph
 langsmith
 requests
 google-generativeai
+duckduckgo-search
+
