@@ -5,65 +5,43 @@ import time
 from typing import List, Optional, Dict, Any
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, Field, ValidationError
+#from langchain.tools import DuckDuckGoSearch
 from langchain_community.tools import DuckDuckGoSearchRun
 from langchain.output_parsers import PydanticOutputParser
 from langchain.schema import Document
 from langgraph.graph import StateGraph
 from langsmith import trace
 import json
+import json
 import argparse
 import sys
-from dotenv import load_dotenv
 
+import os
+from langchain_community.utilities import SerpAPIWrapper
+import os
+from dotenv import load_dotenv
 load_dotenv()
+
+#SERPAPI_API = os.getenv("SERPAPI_KEY")
+#search_tool = SerpAPIWrapper(serpapi_api_key=SERPAPI_API)
+
+import os
+from dotenv import load_dotenv
+load_dotenv()
+import google.generativeai as genai
+# ...other imports...
 
 GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
 genai.configure(api_key=GOOGLE_API_KEY)
 
-# --- Cache Setup ---
-CACHE_DIR = "./gemini_cache"
-os.makedirs(CACHE_DIR, exist_ok=True)
-
-import hashlib
-
-def get_cache_key(prompt: str) -> str:
-    return hashlib.md5(prompt.encode("utf-8")).hexdigest()
-
-def save_to_cache(prompt: str, response: str):
-    key = get_cache_key(prompt)
-    path = os.path.join(CACHE_DIR, f"{key}.json")
-    with open(path, "w") as f:
-        json.dump({"prompt": prompt, "response": response}, f)
-
-def load_from_cache(prompt: str) -> Optional[str]:
-    key = get_cache_key(prompt)
-    path = os.path.join(CACHE_DIR, f"{key}.json")
-    if os.path.exists(path):
-        with open(path, "r") as f:
-            data = json.load(f)
-        return data["response"]
-    return None
-
-# --- Gemini Flash with caching ---
 def gemini_flash(prompt: str) -> str:
-    cached = load_from_cache(prompt)
-    if cached:
-        print("⚡ Using cached Gemini response")
-        return cached
-
-    try:
-        model = genai.GenerativeModel("gemini-1.5-flash")
-        response = model.generate_content(prompt)
-        text = response.text
-        save_to_cache(prompt, text)
-        return text
-    except Exception as e:
-        print(f"⚠ Gemini API error: {e}")
-        if cached:
-            return cached
-        return "Gemini API unavailable and no cached result."
+    model = genai.GenerativeModel("gemini-1.5-flash")
+    response = model.generate_content(prompt)
+    return response.text
 
 # --- Schemas ---
+
+
 class ResearchPlanStep(BaseModel):
     step_id: str
     description: str
@@ -98,7 +76,8 @@ class GraphState(BaseModel):
     synthesis: str = None
     final_brief: Any = None    
 
-# --- Persistent User History ---
+# --- Persistent User History (simple file-based for demo) ---
+
 USER_HISTORY_DIR = "./user_history"
 os.makedirs(USER_HISTORY_DIR, exist_ok=True)
 
@@ -117,10 +96,12 @@ def save_user_brief(user_id: str, brief: FinalBrief):
     with open(path, "w") as f:
         json.dump([b.dict() for b in history], f)
 
-# --- LangChain Tools ---
+# --- LangChain LLMs and Tools ---
+
 search_tool = DuckDuckGoSearchRun()
 
 # --- Node Implementations ---
+
 def context_summarization_node(state: GraphState) -> GraphState:
     user_id = state.user_id
     follow_up = state.follow_up
@@ -131,6 +112,7 @@ def context_summarization_node(state: GraphState) -> GraphState:
     if not history:
         state.context_summary = None
         return state
+    # Summarize prior briefs using LLM
     summaries = [b.synthesis for b in history[-3:]]
     prompt = f"Summarize the following prior research briefs for context:\n" + "\n---\n".join(summaries)
     output = gemini_flash(prompt)
@@ -141,39 +123,46 @@ def planning_node(state: GraphState) -> GraphState:
     topic = state.topic
     depth = state.depth
     context_summary = state.context_summary
-    parser = PydanticOutputParser(pydantic_object=ResearchPlanStep)
+    parser = PydanticOutputParser(pydantic_object=ResearchPlanStep)  # <-- Move this up!
     prompt = (f"Plan research steps for topic '{topic}' at depth {depth}."
-              " For each step, respond ONLY with a single valid JSON object (not a list) matching this schema:\n"
-              f"{parser.get_format_instructions()}")
+          " For each step, respond ONLY with a single valid JSON object (not a list) matching this schema:\n"
+          f"{parser.get_format_instructions()}"
+)
     if context_summary:
         prompt += f"\nContext: {context_summary}"
     steps = []
     for i in range(depth):
-        step_prompt = prompt + f"\nStep {i+1}:"
-        for _ in range(3):
+     step_prompt = prompt + f"\nStep {i+1}:"
+    for _ in range(3):  # Retry logic
+        try:
+            output = gemini_flash(step_prompt)
+            # Try to parse as JSON, handle both object and list
             try:
-                output = gemini_flash(step_prompt)
-                try:
-                    output_json = json.loads(output)
-                    if isinstance(output_json, list):
-                        for item in output_json:
-                            if isinstance(item, dict):
-                                output = json.dumps(item)
-                                break
-                        else:
-                            raise ValueError("No valid dict in Gemini output list")
-                    elif isinstance(output_json, dict):
-                        output = json.dumps(output_json)
+                output_json = json.loads(output)
+                # If it's a list, take the first dict-like element
+                if isinstance(output_json, list):
+                    # Find the first dict in the list
+                    for item in output_json:
+                        if isinstance(item, dict):
+                            output = json.dumps(item)
+                            break
                     else:
-                        raise ValueError("Gemini output is not a dict or list")
-                except Exception:
-                    pass
-                step = parser.parse(output)
-                step.step_id = str(uuid.uuid4())
-                steps.append(step)
-                break
-            except ValidationError:
-                continue
+                        # If no dict found, raise error
+                        raise ValueError("No valid dict in Gemini output list")
+                elif isinstance(output_json, dict):
+                    output = json.dumps(output_json)
+                else:
+                    raise ValueError("Gemini output is not a dict or list")
+            except Exception:
+                pass  # If not JSON, let parser handle it (may still work)
+            step = parser.parse(output)
+            step.step_id = str(uuid.uuid4())
+            steps.append(step)
+            break
+        except ValidationError as e:
+            # Optionally print for debugging:
+            # print("Validation error:", e)
+            continue
     state.steps = steps
     return state
 
@@ -183,12 +172,16 @@ def search_node(state: GraphState) -> GraphState:
     for step in steps:
         query = step.description
         results = search_tool.run(query)
-        sources.extend(results[:2])
+        print("Search results for query:", query)
+        print(results)
+        # Assume results is a list of dicts with 'url' and 'title'
+        sources.extend(results[:2])  # Take top 2 per step
     state.source_urls = [s["url"] for s in sources if isinstance(s, dict) and "url" in s]
     state.source_titles = [s["title"] for s in sources if isinstance(s, dict) and "title" in s]
     return state
 
 def content_fetch_node(state: GraphState) -> GraphState:
+    # For demo, just pass URLs and titles forward
     state.documents = [
         Document(page_content=f"Content of {title}", metadata={"url": url})
         for url, title in zip(state.source_urls, state.source_titles)
@@ -201,11 +194,12 @@ def per_source_summarization_node(state: GraphState) -> GraphState:
     parser = PydanticOutputParser(pydantic_object=SourceSummary)
     for doc in docs:
         prompt = (f"Summarize the following source for research:\nTitle: {doc.metadata['url']}\nContent: {doc.page_content}\n"
-                  "Respond ONLY with a valid JSON object matching this schema:\n"
-                  f"{parser.get_format_instructions()}")
+        "Respond ONLY with a valid JSON object matching this schema:\n"
+    f"{parser.get_format_instructions()}")
         for _ in range(3):
             try:
                 output = gemini_flash(prompt)
+                # Try to parse as JSON, handle both object and list
                 try:
                     output_json = json.loads(output)
                     if isinstance(output_json, list):
@@ -250,7 +244,22 @@ def post_processing_node(state: GraphState) -> GraphState:
     return state
 
 # --- Graph Definition ---
+
+# ...existing code...
+from langgraph.graph import StateGraph
+
+# --- Graph Definition ---
+from pydantic import BaseModel
+from typing import Dict, Any
+
+
+
+# --- Graph Definition ---
+
 graph = StateGraph(GraphState)
+# ...rest of your graph construction code...
+
+#graph = StateGraph()
 graph.add_node("context_summarization", context_summarization_node)
 graph.add_node("planning", planning_node)
 graph.add_node("search", search_node)
@@ -264,10 +273,13 @@ graph.add_edge("search", "content_fetch")
 graph.add_edge("content_fetch", "per_source_summarization")
 graph.add_edge("per_source_summarization", "synthesis_step")
 graph.add_edge("synthesis_step", "post_processing")
+# Add a special start node and connect it to your entry node
 graph.add_edge("__start__", "context_summarization")
 compiled_graph = graph.compile()
+# ...existing code...
 
 # --- FastAPI Interface ---
+
 app = FastAPI()
 
 @app.post("/brief", response_model=FinalBrief)
@@ -292,12 +304,14 @@ def generate_brief(request: Dict[str, Any]):
     brief = graph_output["final_brief"]
     save_user_brief(user_id, brief)
     latency = time.time() - start_time
+    # Token usage estimation (mocked)
     brief_dict = brief.dict()
     brief_dict["latency_seconds"] = latency
     brief_dict["token_estimate"] = len(str(brief_dict)) // 4
     return brief
 
 # --- CLI Interface ---
+
 def cli():
     parser = argparse.ArgumentParser(description="Research Brief Generator CLI")
     parser.add_argument("--topic", required=True)
@@ -317,3 +331,4 @@ def cli():
 if __name__ == "__main__":
     if "cli" in sys.argv:
         cli()
+
