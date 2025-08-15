@@ -209,9 +209,10 @@ Render Start Command: uvicorn app:app --host 0.0.0.0 --port $PORT
 
 
 Test locally with CLI first before deploying.
+
 # Error
 500 internal error may arise if gemini api key limit exceeded. 
-The fall back logic would only work if there is one user history.
+The fall back logic would only work if there is one user history and the follow up must be true "follow up" = "true"
 
 # Summary
 
