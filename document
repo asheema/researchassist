@@ -209,6 +209,9 @@ Render Start Command: uvicorn app:app --host 0.0.0.0 --port $PORT
 
 
 Test locally with CLI first before deploying.
+# Error
+500 internal error may arise if gemini api key limit exceeded. 
+The fall back logic would only work if there is one user history.
 
 # Summary
 
@@ -230,4 +233,3 @@ First run the file.
 then uvicorn filename:app --reload this will start fastapi and load browser. Go to the given link genearted with /docs added at end of url . then ur endpont will come up. then test by giving example usage as given above
 
 
-Perfect! Here's a clear diagram of your LangGraph node flow with execution metrics included.
